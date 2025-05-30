@@ -1,4 +1,4 @@
-API_KEY = ""
+API_KEY = "your_api_key"
 API_BASE = "https://api.openai-proxy.org/v1"
 
 COMMON_CONFIG = {
@@ -31,4 +31,25 @@ AGENT_CONFIG = {
         'max_tokens': 10000,
         'timeout': 300,
     },
+    "DocumentSelectionAgent": {
+        **COMMON_CONFIG,
+        'name': 'DocumentSelectionAgent',
+        'model': 'gpt-4o',
+        'temperature': 0,
+        'max_tokens': 10000,
+        'timeout': 300,
+    },
+    "AnswerGenerationAgent": {
+        **COMMON_CONFIG,
+        'name': 'AnswerGenerationAgent',
+        'model': 'gpt-4o',
+        'temperature': 0,
+        'max_tokens': 10000,
+        'timeout': 300,
+    },
+    "RetrievalAgent": {
+        'name': 'RetrievalAgent',
+        'api_url': 'http://localhost:8000/search',
+        'num_results': 10
+    }
 }
