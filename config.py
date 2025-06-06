@@ -1,4 +1,4 @@
-API_KEY = "your_api_key"
+API_KEY = ""
 API_BASE = "https://api.openai-proxy.org/v1"
 
 COMMON_CONFIG = {
@@ -6,6 +6,7 @@ COMMON_CONFIG = {
     'api_base': API_BASE,
 }
 
+# gpt-4o-mini gpt-4o gpt-3.5-turbo
 AGENT_CONFIG = {
     "QueryRewriteAgent": {
         **COMMON_CONFIG,
@@ -26,7 +27,7 @@ AGENT_CONFIG = {
     "QueryDecompositionAgentSerial": {
         **COMMON_CONFIG,
         'name': 'QueryDecompositionAgentSerial',
-        'model': 'gpt-4o',  # 4o-mini 不行
+        'model': 'gpt-4o',  # 4o-mini 不行！！！！！！
         'temperature': 0,
         'max_tokens': 10000,
         'timeout': 300,
@@ -34,7 +35,7 @@ AGENT_CONFIG = {
     "DocumentSelectionAgent": {
         **COMMON_CONFIG,
         'name': 'DocumentSelectionAgent',
-        'model': 'gpt-4o',
+        'model': 'gpt-4o-mini',
         'temperature': 0,
         'max_tokens': 10000,
         'timeout': 300,
@@ -42,7 +43,7 @@ AGENT_CONFIG = {
     "AnswerGenerationAgent": {
         **COMMON_CONFIG,
         'name': 'AnswerGenerationAgent',
-        'model': 'gpt-4o',
+        'model': 'gpt-4o-mini',
         'temperature': 0,
         'max_tokens': 10000,
         'timeout': 300,
@@ -50,6 +51,10 @@ AGENT_CONFIG = {
     "RetrievalAgent": {
         'name': 'RetrievalAgent',
         'api_url': 'http://localhost:8000/search',
-        'num_results': 10
+        'num_results': 5
+    },
+    "IterativeWorkflowAgent": {
+        'name': 'IterativeWorkflowAgent',
     }
 }
+
