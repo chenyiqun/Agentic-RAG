@@ -82,7 +82,13 @@ python data/{dataset_name}.py
 
 ## 🔍 Deploy Retriever
 
-Run the run_server.sh in ./qa_manager:
+Firstly, you should getting index for the corpus. You should have a corpus, a dense retrieval model, and run index.py in ./retriever:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python index.py
+```
+
+Then, run the run_server.sh in ./qa_manager to deploy the retreiver:
 
 ```bash
 bash run_server.sh
@@ -93,7 +99,7 @@ bash run_server.sh
 
 ## 🏋️ Training
 
-Run the run_ppo.sh
+Run the run_ppo.sh to start the train loop of MAO-ARAG.
 
 ```bash
 bash run_ppo.sh
