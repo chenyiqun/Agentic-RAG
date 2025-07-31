@@ -21,7 +21,7 @@ Traditional RAG systems struggle to serve all types of queries efficiently, as t
 
 ## ⚙️ Computational Resource Requirements
 
-> 
+We used 6\*A800 for training of MAO-ARAG and deployed retreiver with the help of 1\*A800 to accelerate retrieval.
 
 ---
 
