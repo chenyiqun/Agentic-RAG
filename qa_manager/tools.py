@@ -8,6 +8,9 @@ from typing import Dict, List
 MODEL_PRICING = {
     'gpt-4o-2024-11-20': {'prompt': 0.00375, 'completion': 0.015},
     'gpt-4o-mini-2024-07-18': {'prompt': 0.000225,'completion': 0.0009},
+    'gpt-3.5-turbo-0125': {'prompt': 0.00075,'completion': 0.00225},
+    'gpt-4.1-nano-2025-04-14': {'prompt': 0.00015,'completion': 0.0006}
+
 }
 
 class TokenUsageTracker:

@@ -303,7 +303,50 @@ class RewardManager():
                 f1_rewards_tensor[i, valid_response_length - 1] = 0
 
         return f1_rewards_tensor
-        
+
+    def assign_token_retrieval_cost(self, data, metrics, context_list, token_cost_list, retrieval_api_cost_list, turn_id):
+         # token and retrieval cost
+        token_retrieval_cost_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
+
+        # batch是一个turn的, i 是遍历一个turn中batch size条数据
+        for i in range(len(context_list)): 
+            # get position
+            data_item = data[i]  # DataProtoItem
+            prompt_ids = data_item.batch['prompts']
+            prompt_length = prompt_ids.shape[-1]
+            response_ids = data_item.batch['responses']
+            valid_response_length = data_item.batch['attention_mask'][prompt_length:].sum()
+
+            begin_step = context_list[i]['begin_step']
+            end_step = context_list[i]['end_step']
+
+            token_cost = token_cost_list[i]
+            retrieval_api_cost = retrieval_api_cost_list[i]
+            # print('token_cost', token_cost)
+            # print('retrieval_api_cost', retrieval_api_cost)
+            if context_list[i]['mode'] == "serial" and turn_id == begin_step:
+                turn_latency_cost = 0.25 * len(context_list[i]['sub_query'])
+            elif context_list[i]['mode'] == "parallel" and turn_id == begin_step:
+                turn_latency_cost = 0.25 * 1
+            else:
+                turn_latency_cost = 0.0
+            # print('turn_latency_cost', turn_latency_cost)
+
+            coeff_token, coeff_retrieval, coeff_turn = -1.0, -0.25, -0.5
+            final_cost = coeff_token * token_cost + coeff_retrieval * retrieval_api_cost + coeff_turn * turn_latency_cost
+
+            coeff_cost = 0.0
+            final_cost = final_cost * coeff_cost
+            # print('final_cost', final_cost)
+            # print('\n')
+            
+            # 只有当begin_step到end_step才有f1，其余的为0.
+            if turn_id >= begin_step and turn_id <= end_step:
+                token_retrieval_cost_tensor[i, valid_response_length - 1] = final_cost
+            else:
+                token_retrieval_cost_tensor[i, valid_response_length - 1] = 0
+
+        return token_retrieval_cost_tensor
 
     def get_rewards(self, data: DataProto, is_legal_list: List[bool]):
         # rewards

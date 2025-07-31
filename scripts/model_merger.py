@@ -291,6 +291,9 @@ class FSDPModelMerger(BaseModelMerger):
 
         merged_state_dict = self._load_and_merge_state_dicts(world_size, total_shards, mesh_shape, mesh_dim_names)
 
+        # # 去掉每个键开头的"base_model.model."
+        # modified_merged_state_dict = {key[17:]: value for key, value in merged_state_dict.items()}
+
         if self.config.operation == "test":
             if not self.config.test_hf_dir:
                 raise ValueError("test_hf_dir must be provided for test operation")

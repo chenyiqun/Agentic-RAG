@@ -1,0 +1,5 @@
+Error processing questionquestion 'The biggest city in the world.': 'int' object has no attribute 'create_planning_messages'
+Error processing questionquestion 'What is the capital of China?': 'int' object has no attribute 'create_planning_messages'
+
+====== Token Usage Summary ======
+Token Usage: [{'calls': 0, 'completion_tokens': 0, 'prompt_tokens': 0, 'total_tokens': 0, 'completion_price': 0, 'prompt_price': 0, 'total_price': 0}]

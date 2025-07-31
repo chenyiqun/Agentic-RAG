@@ -1,4 +1,4 @@
-API_KEY = "sk-PVRw74ZXeE1Wl3pXejUTCmM16g46QiMYbIU9bGTyh1YDxGwV"
+API_KEY = ""
 API_BASE = "https://api.openai-proxy.org/v1"
 
 COMMON_CONFIG = {
@@ -6,54 +6,54 @@ COMMON_CONFIG = {
     'api_base': API_BASE,
 }
 
-# gpt-4o-mini gpt-4o gpt-3.5-turbo
+# gpt-4o-mini gpt-4o gpt-3.5-turbo gpt-4.1-nano
 AGENT_CONFIG = {
     "QueryRewriteAgent": {
         **COMMON_CONFIG,
         'name': 'QueryRewriteAgent',
-        'model': 'gpt-4o-mini',  # gpt-4o-mini
+        'model': 'gpt-3.5-turbo',  # gpt-4o-mini
         'temperature': 0,
-        'max_tokens': 10000,
+        'max_tokens': 4096,
         'timeout': 300,
     },
     "QueryDecompositionAgentParallel": {
         **COMMON_CONFIG,
         'name': 'QueryDecompositionAgentParallel',
-        'model': 'gpt-4o-mini',
+        'model': 'gpt-3.5-turbo',
         'temperature': 0,
-        'max_tokens': 10000,
+        'max_tokens': 4096,
         'timeout': 300,
     },
     "QueryDecompositionAgentSerial": {
         **COMMON_CONFIG,
         'name': 'QueryDecompositionAgentSerial',
-        'model': 'gpt-4o',  # 4o-mini 不行！！！！！！
+        'model': 'gpt-3.5-turbo',  # 4o-mini 不行！！！！！！
         'temperature': 0,
-        'max_tokens': 10000,
+        'max_tokens': 4096,
         'timeout': 300,
     },
     "DocumentSelectionAgent": {
         **COMMON_CONFIG,
         'name': 'DocumentSelectionAgent',
-        'model': 'gpt-4o-mini',
+        'model': 'gpt-3.5-turbo',
         'temperature': 0,
-        'max_tokens': 10000,
+        'max_tokens': 4096,
         'timeout': 300,
     },
     "AnswerGenerationAgent": {
         **COMMON_CONFIG,
         'name': 'AnswerGenerationAgent',
-        'model': 'gpt-4o-mini',
+        'model': 'gpt-3.5-turbo',
         'temperature': 0,
-        'max_tokens': 10000,
+        'max_tokens': 4096,
         'timeout': 300,
     },
     "RetrievalAgent": {
         **COMMON_CONFIG,
         'name': 'RetrievalAgent',
-        'model': 'gpt-4o-mini',
+        'model': 'gpt-3.5-turbo',
         'temperature': 0,
-        'max_tokens': 10000,
+        'max_tokens': 4096,
         'timeout': 300,
         'api_url': 'http://localhost:8000/search',
         'num_results': 5
@@ -61,9 +61,9 @@ AGENT_CONFIG = {
     "AnswerSummarizationAgent": {
         **COMMON_CONFIG,
         'name': 'AnswerSummarizationAgent',
-        'model': 'gpt-4o-mini',
+        'model': 'gpt-3.5-turbo',
         'temperature': 0,
-        'max_tokens': 10000,
+        'max_tokens': 4096,
         'timeout': 300,
         'api_url': 'http://localhost:8000/search',
         'num_results': 5

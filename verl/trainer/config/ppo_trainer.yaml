@@ -33,7 +33,7 @@ actor_rollout_ref:
     enable_gradient_checkpointing: True
     enable_activation_offload: False
     use_remove_padding: False
-    lora_rank: 32  # Set to positive value to enable LoRA (e.g., 32)
+    lora_rank: 0  # Set to positive value to enable LoRA (e.g., 32)
     lora_alpha: 16  # LoRA scaling factor
     target_modules: all-linear  # all-linear or [q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj]
     use_liger: False
@@ -54,9 +54,9 @@ actor_rollout_ref:
     clip_ratio_c: 3.0 # lower bound of the value for Dual-clip PPO from https://arxiv.org/pdf/1912.09729
     loss_agg_mode: "token-mean" # / "seq-mean-token-sum" / "seq-mean-token-mean"
     entropy_coeff: 0
-    use_kl_loss: False # True for GRPO
+    use_kl_loss: True # True for GRPO  False
     use_torch_compile: True # False to disable torch compile
-    kl_loss_coef: 0.001 # for grpo
+    kl_loss_coef: 0.01 # for grpo  0.001
     kl_loss_type: low_var_kl # for grpo
     ppo_epochs: 1
     shuffle: False
@@ -174,7 +174,7 @@ critic:
         # transformer_layer_cls_to_wrap: None
         min_num_params: 0
       fsdp_size: -1
-    lora_rank: 32  # Set to positive value to enable LoRA (e.g., 32)
+    lora_rank: 0  # Set to positive value to enable LoRA (e.g., 32)
     lora_alpha: 16  # LoRA scaling factor
     target_modules: all-linear  # all-linear or [q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj]
   ppo_mini_batch_size: ${actor_rollout_ref.actor.ppo_mini_batch_size}
@@ -260,7 +260,7 @@ trainer:
   # auto: find the last ckpt to resume. If can't find, start from scratch
   resume_mode: disable # auto or disable or resume_path if resume_from_path is set
   resume_from_path: null
-  val_before_train: False
+  val_before_train: True
   test_freq: -1
   critic_warmup: 0
   default_hdfs_dir: null

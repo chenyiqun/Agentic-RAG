@@ -322,7 +322,7 @@ class DataParallelPPOActor(BasePPOActor):
         temperature = data.meta_info["temperature"]  # temperature must be in the data.meta_info to avoid silent error
         multi_turn = data.meta_info.get("multi_turn", False)
 
-        select_keys = ["responses", "input_ids", "attention_mask", "position_ids", "old_log_probs", "advantages"]
+        select_keys = ["responses", "input_ids", "attention_mask", "position_ids", "old_log_probs", "advantages", "item_loss_mask"]
         if multi_turn:
             select_keys.append("loss_mask")
         if self.config.use_kl_loss:
@@ -359,6 +359,12 @@ class DataParallelPPOActor(BasePPOActor):
                 self.actor_optimizer.zero_grad()
 
                 for data in micro_batches:
+                    item_loss_mask = data["item_loss_mask"]
+                    # # 如果所有值都为 False，跳过本次更新
+                    # if not torch.any(item_loss_mask):
+                    #     # print('actor 所有值都为 False，跳过本次更新:')
+                    #     continue
+
                     # Support all hardwares
                     if isinstance(data, DataProto):
                         data = {**data.batch.to(get_torch_device().current_device()), **data.non_tensor_batch}
@@ -375,6 +381,13 @@ class DataParallelPPOActor(BasePPOActor):
                     old_log_prob = data["old_log_probs"]
                     advantages = data["advantages"]
 
+                    # item_loss_mask = data["item_loss_mask"]
+                    # # 如果所有值都为 False，跳过本次更新
+                    # if not torch.any(item_loss_mask):
+                    #     print('actor 所有值都为 False，跳过本次更新, item_loss_mask:', item_loss_mask)
+                    #     continue
+                    # print('actor 本次更新有效')
+
                     clip_ratio = self.config.clip_ratio
                     clip_ratio_low = self.config.clip_ratio_low if self.config.clip_ratio_low is not None else clip_ratio
                     clip_ratio_high = self.config.clip_ratio_high if self.config.clip_ratio_high is not None else clip_ratio
@@ -388,17 +401,61 @@ class DataParallelPPOActor(BasePPOActor):
                         calculate_entropy = True
                     entropy, log_prob = self._forward_micro_batch(micro_batch=data, temperature=temperature, calculate_entropy=calculate_entropy)
 
+                    # print('old_log_prob.size()', old_log_prob.size())
+                    # print('\n')
+                    # print('log_prob.size()', log_prob.size())
+                    # print('\n')
+                    # print('advantages.size()', advantages.size())
+                    # print('\n')
+                    # print('response_mask.size()', response_mask.size())
+                    # print('\n')
+                    # # print('entropy', entropy)
+                    # # print('\n')
+                    # print('item_loss_mask', item_loss_mask)
+                    # print('\n')
+
+                    # 将 item_loss_mask 扩展为适用于其他张量的形状
+                    item_loss_mask_index = item_loss_mask.squeeze()
+                    # print('item_loss_mask_index', item_loss_mask_index)
+                    # print('\n')
+                    # 使用布尔索引进行筛选
+                    filtered_old_log_prob = old_log_prob[item_loss_mask_index]
+                    filtered_log_prob = log_prob[item_loss_mask_index]
+                    filtered_advantages = advantages[item_loss_mask_index]
+                    filtered_response_mask = response_mask[item_loss_mask_index]
+
+                    # print('filtered_old_log_prob.size()', filtered_old_log_prob.size())
+                    # print('\n')
+                    # print('filtered_log_prob.size()', filtered_log_prob.size())
+                    # print('\n')
+                    # print('filtered_advantages.size()', filtered_advantages.size())
+                    # print('\n')
+                    # print('filtered_response_mask.size()', filtered_response_mask.size())
+                    # print('\n')
+
+                    # print('old_log_prob', old_log_prob)
+                    # print('filtered_old_log_prob', filtered_old_log_prob)
+
                     pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower = compute_policy_loss(
-                        old_log_prob=old_log_prob,
-                        log_prob=log_prob,
-                        advantages=advantages,
-                        response_mask=response_mask,
+                        old_log_prob=filtered_old_log_prob,
+                        log_prob=filtered_log_prob,
+                        advantages=filtered_advantages,
+                        response_mask=filtered_response_mask,
                         cliprange=clip_ratio,
                         cliprange_low=clip_ratio_low,
                         cliprange_high=clip_ratio_high,
                         clip_ratio_c=clip_ratio_c,
                         loss_agg_mode=loss_agg_mode,
                     )
+
+                    # print('pg_loss', pg_loss)
+                    # print('\n')
+                    # print('pg_clipfrac', pg_clipfrac)
+                    # print('\n')
+                    # print('ppo_kl', ppo_kl)
+                    # print('\n')
+                    # print('pg_clipfrac_lower', pg_clipfrac_lower)
+                    # print('\n')
 
                     if entropy_coeff != 0:
                         entropy_loss = agg_loss(loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
@@ -408,7 +465,9 @@ class DataParallelPPOActor(BasePPOActor):
                     else:
                         policy_loss = pg_loss
 
+                    # print('--------------------- no use_kl_loss ---------------------')
                     if self.config.use_kl_loss:
+                        print('--------------------- use_kl_loss ---------------------')
                         ref_log_prob = data["ref_log_prob"]
                         # compute kl loss
                         kld = kl_penalty(logprob=log_prob, ref_logprob=ref_log_prob, kl_penalty=self.config.kl_loss_type)
@@ -422,7 +481,22 @@ class DataParallelPPOActor(BasePPOActor):
                         # relative to the dynamic bsz
                         loss = policy_loss * (len(data) / self.config.ppo_mini_batch_size)
                     else:
-                        loss = policy_loss / self.gradient_accumulation
+                        num_true_int = item_loss_mask.sum().item()
+                        # print('num_true_int', num_true_int)
+                        loss = policy_loss / self.gradient_accumulation * num_true_int
+                        # print('actor no use_dynamic_bsz, self.gradient_accumulation:', self.gradient_accumulation)
+                        # print('\n')
+                        # print('actor loss', loss)
+                        # print('\n')
+                    
+                    # # 如果所有值都为 False，跳过本次更新
+                    # if not torch.any(item_loss_mask):
+                    #     print('actor 所有值都为 False，loss乘以0')
+                    #     print('actor loss', loss)
+                    #     loss = loss * 0
+                    #     print('actor loss', loss)
+                    #     print('\n')
+
                     loss.backward()
 
                     data = {
@@ -433,8 +507,11 @@ class DataParallelPPOActor(BasePPOActor):
                     }
                     append_to_dict(metrics, data)
 
-                grad_norm = self._optimizer_step()
-                data = {"actor/grad_norm": grad_norm.detach().item()}
-                append_to_dict(metrics, data)
+                # Check if gradients have been computed
+                gradients_computed = any(param.grad is not None for param in self.actor_module.parameters())
+                if gradients_computed:
+                    grad_norm = self._optimizer_step()
+                    data = {"actor/grad_norm": grad_norm.detach().item()}
+                    append_to_dict(metrics, data)
         self.actor_optimizer.zero_grad()
         return metrics

@@ -105,7 +105,7 @@ if __name__ == '__main__':
     # print("Using device cuda:{}".format(cuda_id))
 
     # ************************************ load indexing and retrieval model ************************************
-    pre_path = '/root/paddlejob/workspace/env_run/rag_reranker/corpus/'
+    pre_path = '/root/paddlejob/workspace/env_run/verl/retriever/'
     docs_path = pre_path+'psgs_w100.tsv'
     retrieval_model_name = 'e5'
 
@@ -116,7 +116,7 @@ if __name__ == '__main__':
         retriever_model_path = '/root/paddlejob/workspace/env_run/rag_reranker/models_fund/BAAI/bge-base-en-v1.5'
         index_path = pre_path+'wikipedia.bge'
     elif retrieval_model_name == 'e5':
-        retriever_model_path = '/root/paddlejob/workspace/env_run/rag_reranker/models_fund/intfloat/e5-base-v2'
+        retriever_model_path = '/root/paddlejob/workspace/env_run/verl/retriever/intfloat/e5-base-v2'
         index_path = pre_path+'wikipedia.e5'
 
     # loading retriever model

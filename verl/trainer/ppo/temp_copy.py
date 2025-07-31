@@ -66,7 +66,7 @@ WorkerType = Type[Worker]
 import re
 
 from qa_manager.qa import QA_Manager, Agentic_RAG_Manager
-from qa_manager.BaseAgent4 import *
+from qa_manager.BaseAgent3 import *
 from qa_manager.PlanningAgent import PlanningAgent
 
 import multiprocessing
@@ -122,80 +122,6 @@ def run_workflow(temp_i, turn_id, context_list, is_legal, workflows, turn_predic
         context["end_step"] = turn_id
 
     # print('context', temp_i, context)
-
-def init_context_1turn_list(batch_dict, MAX_TURN):
-    batch_size = batch_dict['input_ids'].size()[0]
-    extra_info = batch_dict['extra_info']
-    questions = [item['question'] for item in extra_info]
-    context_1turn_list = []
-    for temp_i in range(batch_size):
-        temp_context = {
-            "original_query": questions[temp_i],
-            "query": questions[temp_i],
-            "mode": 'normal',
-            "is_sub": False,
-            "results": [[]],
-            "sub_query": [],
-            "sub_answer": [],
-            "begin_step": -1,
-            "end_step": MAX_TURN,
-            "current_step": -1,
-            "token_cost": {
-                "QueryRewriteAgent": 0.0,
-                "QueryDecompositionAgentParallel": 0.0,
-                "QueryDecompositionAgentSerial": 0.0,
-                "DocumentSelectionAgent": 0.0,
-                "QueryReAnswerGenerationAgentwriteAgent": 0.0,
-                "AnswerSummarizationAgent": 0.0,
-                "RetrievalAgent": 0.0
-            },
-            "answer": ""
-        }
-        context_1turn_list.append(temp_context)
-
-    return context_1turn_list
-
-    # self.register([
-    #         QueryRewriteAgent(AGENT_CONFIG['QueryRewriteAgent']),
-    #         QueryDecompositionAgentParallel(AGENT_CONFIG['QueryDecompositionAgentParallel']),
-    #         QueryDecompositionAgentSerial(AGENT_CONFIG['QueryDecompositionAgentSerial']),
-    #         RetrievalAgent(AGENT_CONFIG['RetrievalAgent']),
-    #         DocumentSelectionAgent(AGENT_CONFIG['DocumentSelectionAgent']),
-    #         AnswerGenerationAgent(AGENT_CONFIG['AnswerGenerationAgent']),
-    #         AnswerSummarizationAgent(AGENT_CONFIG['AnswerSummarizationAgent']),
-    #     ])
-
-def convert_to_shared_structure(data, manager):
-    if isinstance(data, list):
-        return manager.list([
-            convert_to_shared_structure(item, manager) for item in data
-        ])
-    elif isinstance(data, dict):
-        return manager.dict({
-            key: convert_to_shared_structure(value, manager)
-            for key, value in data.items()
-        })
-    else:
-        return data
-
-def convert_to_local_structure(data):
-    # 检查是否为 ListProxy 代理对象
-    if isinstance(data, multiprocessing.managers.ListProxy):
-        # 将 ListProxy 转换为普通列表
-        return [convert_to_local_structure(item) for item in data]
-    # 检查是否为 DictProxy 代理对象
-    elif isinstance(data, multiprocessing.managers.DictProxy):
-        # 将 DictProxy 转换为普通字典
-        return {key: convert_to_local_structure(value) for key, value in data.items()}
-    # 普通列表或元组
-    elif isinstance(data, list) or isinstance(data, tuple):
-        return [convert_to_local_structure(item) for item in data]
-    # 普通字典
-    elif isinstance(data, dict):
-        return {key: convert_to_local_structure(value) for key, value in data.items()}
-    else:
-        # 对于基本数据类型，直接返回
-        return data
 
 
 class Role(Enum):
@@ -929,239 +855,156 @@ class RayPPOTrainer:
 
         return metric_dict
 
-    def _validate_agentic(self):
+    def test(self):
+        data_source_lst = []
+        reward_extra_infos_dict: dict[str, list] = defaultdict(list)
+
+        # Lists to collect samples for the table
+        sample_inputs = []
+        sample_outputs = []
+        sample_scores = []
 
         # init qa manager
         qa_manager = Agentic_RAG_Manager(self.tokenizer, self.config)  # QA_Manager Agentic_RAG_Manager
-        agent_pool = AgentPool()
 
-        # test_rewards_list = []
-        test_metrics_dict = {"acc": [], "em": [], "f1": [], "precision": [], "recall": []}
-        test_cost_dict = {"token_cost": [], "api_times": [], "avr_api_per_turn": [], "turn_num": []}
+        test_rewards_list = []
+        test_metrics_dict = {"accuracy": [], "em": [], "f1": [], "precision": [], "recall": []}
 
         # for test_data in self.val_dataloader:
-        batch_id = -1
-        for batch_dict in tqdm(self.val_dataloader, desc="Validation Progress"):
-            batch_id += 1
-            # if batch_id > 1:
+        # times = 0
+        for test_data in tqdm(self.val_dataloader, desc="Validation Progress"):
+            # times += 1
+            # if times > 2:
             #     break
+            test_data = qa_manager.trans_rawprompt_to_ids(test_data)
+            test_batch = DataProto.from_single_dict(test_data)
 
-            print('************************* testing: rollout *************************')
-            extra_info = batch_dict['extra_info']
-            questions = [item['question'] for item in extra_info]  # batch size长度的list
-            golden_answers = [item['answer'] for item in extra_info]  # batch size长度的list
+            # repeat test batch
+            test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n, interleave=True)
 
-            batch_list, metrics_list = [], []
-            predicted_answers_list = [""] * len(questions)  # 存储有效predicted answers
-            MAX_TURN = 5
-            context_list = init_context_1turn_list(batch_dict, MAX_TURN)  # batch size长度的list
-            token_cost_list = []  # [{}] * MAX_TURN
+            # we only do validation on rule-based rm
+            if self.config.reward_model.enable and test_batch[0].non_tensor_batch["reward_model"]["style"] == "model":
+                return {}
 
-            for turn_id in range(MAX_TURN):
-                print('*********************************** testing: new turn {} ***********************************'.format(turn_id))
-                metrics = {}
-                # rollout
-                batch, metrics, cur_questions = self.rollout(batch_dict, metrics, context_list, qa_manager, MAX_TURN)
-                # get prediected answers == workflow -> List[str]
-                workflows_1turn, initial_workflows_context = self.get_answers_subs_list(batch)  # 每个workflow为list 比如['QR', 'RA', 'G']
-                # is the workflow legal or not
-                is_legal_list = self.is_legal_workflows(workflows_1turn, context_list, qa_manager)
+            # Store original inputs
+            input_ids = test_batch.batch["input_ids"]
+            # TODO: Can we keep special tokens except for padding tokens?
+            input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
+            sample_inputs.extend(input_texts)
 
-                # ************************** run the workflows parallel **************************
-                with Manager() as manager:
-                    # 将每个 context 转换为 Manager().dict()，并处理其嵌套列表
+            batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
+            non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
+            if "multi_modal_data" in test_batch.non_tensor_batch:
+                non_tensor_batch_keys_to_pop.append("multi_modal_data")
+            if "raw_prompt" in test_batch.non_tensor_batch:
+                non_tensor_batch_keys_to_pop.append("raw_prompt")
+            if "tools_kwargs" in test_batch.non_tensor_batch:
+                non_tensor_batch_keys_to_pop.append("tools_kwargs")
+            test_gen_batch = test_batch.pop(
+                batch_keys=batch_keys_to_pop,
+                non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
+            )
 
-                    turn_context_list = manager.list([
-                        convert_to_shared_structure(context, manager)
-                        for context in context_list
-                    ])
+            test_gen_batch.meta_info = {
+                "eos_token_id": self.tokenizer.eos_token_id,
+                "pad_token_id": self.tokenizer.pad_token_id,
+                "recompute_log_prob": False,
+                "do_sample": self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
+                "validate": True,
+            }
+            print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
 
-                    turn_context_list = []
-                    for temp_i, context in enumerate(context_list):
-                        if is_legal_list[temp_i]:
-                            turn_context_list.append(convert_to_shared_structure(context, manager))
-                        else:
-                            turn_context_list.append(context)
-                    turn_context_list = manager.list(turn_context_list)
-                    # print('turn_context_list', turn_context_list)
+            # pad to be divisible by dp_size
+            test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
+            if not self.async_rollout_mode:
+                test_output_gen_batch_padded = self.actor_rollout_wg.generate_sequences(test_gen_batch_padded)
+            else:
+                self.async_rollout_manager.wake_up()
+                test_output_gen_batch_padded = self.async_rollout_manager.generate_sequences(test_gen_batch_padded)
+                self.async_rollout_manager.sleep()
 
-                    turn_predicted_answers_list = manager.list([""] * len(questions))
+            # unpad
+            test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
+            print("validation generation end")
 
-                    processes = []
-                    for temp_i in range(len(questions)):
-                        p = Process(target=run_workflow, args=(temp_i, turn_id, turn_context_list, is_legal_list, workflows_1turn, turn_predicted_answers_list, agent_pool, qa_manager, MAX_TURN))
-                        processes.append(p)
-                        p.start()
+            # Store generated outputs
+            output_ids = test_output_gen_batch.batch["responses"]
+            output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
+            sample_outputs.extend(output_texts)
 
-                    for p in processes:
-                        p.join()
+            test_batch = test_batch.union(test_output_gen_batch)
 
-                    # # 在进程结束后，将共享的 Manager().dict() list 转换为普通的 dict list
-                    local_turn_context_list = convert_to_local_structure(turn_context_list)
-                    local_turn_predicted_answers_list = convert_to_local_structure(turn_predicted_answers_list)
+            # # evaluate using reward_function
+            # result = self.val_reward_fn(test_batch, return_dict=True)
+            # reward_tensor = result["reward_tensor"]
+            # scores = reward_tensor.sum(-1).cpu().tolist()
+            # sample_scores.extend(scores)
 
-                # 提取为context_list
-                context_list = local_turn_context_list
+            # get rewards tensor
+            reward_tensor, metrics_tensor_all = self.reward_manager.get_rewards(test_batch)
+            scores = reward_tensor.sum(-1).cpu().tolist()
+            sample_scores.extend(scores)
+            test_rewards_list.extend(scores)
+            
+            metric_tensor_acc, metric_tensor_em, metric_tensor_f1, metric_tensor_pre, metric_tensor_rec = metrics_tensor_all
+            acc_list = metric_tensor_acc.sum(-1).cpu().tolist()
+            em_list = metric_tensor_em.sum(-1).cpu().tolist()
+            f1_list = metric_tensor_f1.sum(-1).cpu().tolist()
+            pre_list = metric_tensor_pre.sum(-1).cpu().tolist()
+            rec_list = metric_tensor_rec.sum(-1).cpu().tolist()
+            test_metrics_dict['accuracy'].extend(acc_list)
+            test_metrics_dict['em'].extend(em_list)
+            test_metrics_dict['f1'].extend(f1_list)
+            test_metrics_dict['precision'].extend(pre_list)
+            test_metrics_dict['recall'].extend(rec_list)
 
-                # 提取这次多进程得到的答案
-                for a_i in range(len(local_turn_predicted_answers_list)):
-                    if local_turn_predicted_answers_list[a_i] != "":
-                        predicted_answers_list[a_i] = local_turn_predicted_answers_list[a_i]
+            # reward_extra_infos_dict["reward"].extend(scores)
+            # if "reward_extra_info" in result:
+            #     for key, lst in result["reward_extra_info"].items():
+            #         reward_extra_infos_dict[key].extend(lst)
 
-                # compute reward scores advantages
-                # 需要修改：当生成最终答案的时候才有reward。不过每一步都可以根据is_legal_list计算penalty为0 or 1.
-                # self.compute_logprobs_values_format_penalty里只计算其他的logprobs, values, penalty等，reward, values, advs单独计算。
-                batch, metrics = self.compute_logprobs_values_format_penalty(batch, metrics, is_legal_list)
+            data_source_lst.append(test_batch.non_tensor_batch.get("data_source", ["unknown"] * reward_tensor.shape[0]))
 
-                # save batch, metrics, and context
-                batch_list.append(batch)
-                metrics_list.append(metrics)
+        self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
 
-                # 保存batch内所有数据在当前turn的token cost，并将context['token_cost'][key]置为零0.0
-                token_cost_turn = []
-                for context in context_list:
-                    token_cost_turn.append(deepcopy(context['token_cost']))
-                    for key in context['token_cost'].keys():
-                        context['token_cost'][key] = 0.0  # 置为零，为后续准备。
-                # token_cost_list[turn_id] = token_cost_turn
-                token_cost_list.append(token_cost_turn)
+        # # dump generations
+        # val_data_dir = self.config.trainer.get("validation_data_dir", None)
+        # if val_data_dir:
+        #     self._dump_generations(
+        #         inputs=sample_inputs,
+        #         outputs=sample_outputs,
+        #         scores=sample_scores,
+        #         reward_extra_infos_dict=reward_extra_infos_dict,
+        #         dump_path=val_data_dir,
+        #     )
 
-                # 保存workflow等信息
-                with open('/root/paddlejob/workspace/env_run/verl/testing_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
-                    file.write(">>>>>>>>>>>>>> batch id: {} <<<<<<<<<<<<<<<<\n".format(batch_id))
-                    file.write(">>>>>>>>>>>>>> turn id: {} <<<<<<<<<<<<<<<<\n".format(turn_id))
-                    for temp_q_i in range(len(questions)):
-                        q_id = batch_id * self.config.data.train_batch_size + temp_q_i
-                        is_legal = is_legal_list[temp_q_i]
-                        workflow = workflows_1turn[temp_q_i]
-                        initial_workflow = initial_workflows_context[temp_q_i]
-                        file.write('question id: {}, is_legal: {}, workflow: {}, initial workflow: {}\n'.format(q_id, is_legal, workflow, initial_workflow))
-                    file.write('\n')
-                
+        # for key_info, lst in reward_extra_infos_dict.items():
+        #     assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
 
-                # # 保存用于蒸馏的数据
-                # for temp_data_i, context in enumerate(context_list):
-                #     if turn_id <= context['end_step'] and turn_id >= context['begin_step']:
-                #         with open('/root/paddlejob/workspace/env_run/verl/distillation_data_nq.jsonl', 'a', encoding='utf-8') as file:
-                #             if context['query'] == cur_questions[temp_data_i]:
-                #                 is_sub = False
-                #             else:
-                #                 is_sub = True
-                #             save_dict = {'question': cur_questions[temp_data_i], 'workflow': ', '.join(workflow), 'is_sub': is_sub}
-                #             json_line = json.dumps(save_dict)  # 将字典转换为 JSON 格式的字符串
-                #             file.write(json_line + '\n')
-                
+        # data_sources = np.concatenate(data_source_lst, axis=0)
 
-                # 如果所有的都有答案了(所有问题对应的都不是初始化的空答案""了)，那么提前break
-                if "" not in predicted_answers_list:
-                    # print('>>>>>>>>>>>>>>>>>>>>>>>> got all answers on turn {} >>>>>>>>>>>>>>>>>>>>>>>>'.format(turn_id))
-                    break
-
-            # 如果最后一轮结束后，且answer还为空，那么执行一次AnswerSummarizationAgent
-            for temp_i in range(len(questions)):
-                if predicted_answers_list[temp_i] == "":
-                    agent = agent_pool.get("AnswerSummarizationAgent")
-                    agent.run(context_list[temp_i])
-                    predicted_answers_list[temp_i] = context_list[temp_i]['answer']
-
-            # 保存答案
-            with open('/root/paddlejob/workspace/env_run/verl/testing_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
-                file.write(">>>>>>>>>>>>>> batch id: {} <<<<<<<<<<<<<<<<\n".format(batch_id))
-                for a_id in range(len(predicted_answers_list)):
-                    predict_answer, golden_answer = predicted_answers_list[a_id], golden_answers[a_id]
-                    file.write('question id: {}, golden answer: {}, predict answer: {}\n'.format(a_id, golden_answer, predict_answer))
-                file.write('\n\n\n\n')
-
-            print('************************* compute testing metrics *************************')
-
-            for temp_i in range(len(questions)):
-                temp_metrics_dict = self.reward_manager.compute_scores([predicted_answers_list[temp_i]], [golden_answers[temp_i]])
-                for key, value in temp_metrics_dict.items():
-                    test_metrics_dict[key].append(temp_metrics_dict[key])
-
-            # print('\n')
-            # print('test_metrics_dict', test_metrics_dict)
-            # print('\n')
-
-            # compute token cost and api cost, for each node, for wandb
-            is_QDS_list = [True if context["mode"] == "serial" else False for context in context_list]
-            is_QDP_list = [True if context["mode"] == "parallel" else False for context in context_list]
-            # 遍历每条数据，重新分配cost
-            for temp_i in range(len(questions)):
-                if not is_QDS_list[temp_i] and not is_QDP_list[temp_i]:
-                    continue
-                else:
-                    if is_QDS_list[temp_i]:
-                        qds_token_cost = 0.0
-                        # 遍历这条数据的 所有turn
-                        qds_turn_id = 0
-                        for turn_id in range(len(token_cost_list)):
-                            qds_token_cost = qds_token_cost + token_cost_list[turn_id][temp_i]["QueryDecompositionAgentSerial"] + token_cost_list[turn_id][temp_i]["QueryRewriteAgent"] + token_cost_list[turn_id][temp_i]["AnswerSummarizationAgent"]
-                            token_cost_list[turn_id][temp_i]["QueryRewriteAgent"] = 0.0
-                            token_cost_list[turn_id][temp_i]["AnswerSummarizationAgent"] = 0.0
-                            if token_cost_list[turn_id][temp_i]["QueryDecompositionAgentSerial"] > 0:
-                                qds_turn_id = turn_id
-                        token_cost_list[qds_turn_id][temp_i]["QueryDecompositionAgentSerial"] = qds_token_cost
-                    elif is_QDP_list[temp_i]:
-                        qdp_token_cost = 0.0
-                        # 遍历这条数据的 所有turn
-                        qdp_turn_id = 0
-                        for turn_id in range(len(token_cost_list)):
-                            qdp_token_cost = qdp_token_cost + token_cost_list[turn_id][temp_i]["QueryDecompositionAgentSerial"] + token_cost_list[turn_id][temp_i]["AnswerSummarizationAgent"]
-                            token_cost_list[turn_id][temp_i]["AnswerSummarizationAgent"] = 0.0
-                            if token_cost_list[turn_id][temp_i]["QueryDecompositionAgentSerial"] > 0:
-                                qdp_turn_id = turn_id
-                        token_cost_list[qdp_turn_id][temp_i]["QueryDecompositionAgentSerial"] = qdp_token_cost
-            # 计算每个node的cost，计算每个node的retrieval api调用情况（[turn_id][question_id]）
-            token_cost_final = [[0.0 for _ in range(len(questions))] for _ in range(len(token_cost_list))]
-            token_cost_scale_final = [[0.0 for _ in range(len(questions))] for _ in range(len(token_cost_list))]
-            retrieval_api_final = [[0.0 for _ in range(len(questions))] for _ in range(len(token_cost_list))]
-            turn_latency_cost_list = [[0.0 for _ in range(len(questions))] for _ in range(len(token_cost_list))]
-
-            for turn_id in range(len(token_cost_list)):
-                for question_id in range(len(questions)):
-                    token_cost_dict = token_cost_list[turn_id][question_id]
-                    cur_token_cost = 0.0
-                    for key, value in token_cost_dict.items():
-                        if key == "RetrievalAgent":
-                            retrieval_api_final[turn_id][question_id] = 1 if value == 1 else retrieval_api_final[turn_id][question_id]
-                        else:
-                            token_cost_final[turn_id][question_id] += value
-                    token_cost_scale_final[turn_id][question_id] = token_cost_final[turn_id][question_id] * 2000
-
-            # compute all cost for each data
-            for temp_i in range(len(questions)):
-                token_cost, api_cost = 0, 0
-                for turn_id in range(len(token_cost_list)):
-                    token_cost += token_cost_final[turn_id][temp_i]
-                    api_cost += retrieval_api_final[turn_id][temp_i]
-                test_cost_dict["token_cost"].append(token_cost)
-                test_cost_dict["api_times"].append(api_cost)
-                legal_step = context_list[temp_i]["end_step"] - context_list[temp_i]["begin_step"] + 1
-                avr_api_per_turn = api_cost / legal_step
-                test_cost_dict["avr_api_per_turn"].append(avr_api_per_turn)
-            for context in context_list:
-                if context['mode'] == "serial":
-                    turn_latency_cost = len(context['sub_answer'])+1
-                elif context['mode'] == "parallel":
-                    turn_latency_cost = 2
-                else:
-                    turn_latency_cost = 1
-                test_cost_dict["turn_num"].append(turn_latency_cost)
-
-            # print('\n')
-            # print('test_cost_dict', test_cost_dict)
-            # print('\n')
-
-        # 测试结束后，wandb 记录training metrics。
-        all_testing_metric_dict = {}
+        # data_src2var2metric2val = process_validation_metrics(data_sources, sample_inputs, reward_extra_infos_dict)
+        metric_dict = {}
+        metric_dict[f'val/test_score/mean_rewards'] = np.mean(test_rewards_list)
         for key, value in test_metrics_dict.items():
-            all_testing_metric_dict['testing/metrics/{}'.format(key)] = np.mean(value)
-        for key, value in test_cost_dict.items():
-            all_testing_metric_dict['testing/cost/{}'.format(key)] = np.mean(value)
-        # metrics_aver.update(temp_testing_metric_dict)
+            metric_dict['val/test_score/{}'.format(key)] = np.mean(value)
 
-        return all_testing_metric_dict
+        # print('test_rewards_list', test_rewards_list, len(test_rewards_list))
+        # print("metric_dict[f'val/test_score/mean_rewards']", np.mean(test_rewards_list))
+
+        # for data_source, var2metric2val in data_src2var2metric2val.items():
+        #     core_var = "acc" if "acc" in var2metric2val else "reward"
+        #     for var_name, metric2val in var2metric2val.items():
+        #         n_max = max([int(name.split("@")[-1].split("/")[0]) for name in metric2val.keys()])
+        #         for metric_name, metric_val in metric2val.items():
+        #             if (var_name == core_var) and any(metric_name.startswith(pfx) for pfx in ["mean", "maj", "best"]) and (f"@{n_max}" in metric_name):
+        #                 metric_sec = "val-core"
+        #             else:
+        #                 metric_sec = "val-aux"
+        #             pfx = f"{metric_sec}/{data_source}/{var_name}/{metric_name}"
+        #             metric_dict[pfx] = metric_val
+
+        return metric_dict
 
     def init_workers(self):
         """Initialize distributed training workers using Ray backend.
@@ -1268,15 +1111,15 @@ class RayPPOTrainer:
             critic_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(self.config.trainer.default_hdfs_dir, f"global_step_{self.global_steps}", "critic")
             self.critic_wg.save_checkpoint(critic_local_path, critic_remote_path, self.global_steps, max_ckpt_to_keep=max_critic_ckpt_to_keep)
 
-        # # save dataloader
-        # dataloader_local_path = os.path.join(local_global_step_folder, "data.pt")
-        # dataloader_state_dict = self.train_dataloader.state_dict()
-        # torch.save(dataloader_state_dict, dataloader_local_path)
+        # save dataloader
+        dataloader_local_path = os.path.join(local_global_step_folder, "data.pt")
+        dataloader_state_dict = self.train_dataloader.state_dict()
+        torch.save(dataloader_state_dict, dataloader_local_path)
 
-        # # latest checkpointed iteration tracker (for atomic usage)
-        # local_latest_checkpointed_iteration = os.path.join(self.config.trainer.default_local_dir, "latest_checkpointed_iteration.txt")
-        # with open(local_latest_checkpointed_iteration, "w") as f:
-        #     f.write(str(self.global_steps))
+        # latest checkpointed iteration tracker (for atomic usage)
+        local_latest_checkpointed_iteration = os.path.join(self.config.trainer.default_local_dir, "latest_checkpointed_iteration.txt")
+        with open(local_latest_checkpointed_iteration, "w") as f:
+            f.write(str(self.global_steps))
 
     def _load_checkpoint(self):
         if self.config.trainer.resume_mode == "disable":
@@ -1418,7 +1261,7 @@ class RayPPOTrainer:
         # compute global_valid tokens
         batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
 
-        return batch, metrics, cur_questions
+        return batch, metrics
 
     def compute_logprobs_values_format_penalty(self, batch, metrics, is_legal_list):
 
@@ -1453,12 +1296,10 @@ class RayPPOTrainer:
 
         return batch, metrics
     
-    def assign_rewards_compute_values_advs(self, batch, metrics, token_cost, retrieval_api_cost, context_list, all_metrics_dict_list, turn_id):
+    def assign_rewards_compute_values_advs(self, batch, metrics, context_list, all_metrics_dict_list, turn_id):
 
         # compute f1 score reward and assign to each data
         f1_rewards_tensor = self.reward_manager.assign_rewards(batch, metrics, context_list, all_metrics_dict_list, turn_id)
-        # compute final cost
-        token_retrieval_cost_tensor = self.reward_manager.assign_token_retrieval_cost(batch, metrics, context_list, token_cost, retrieval_api_cost, turn_id)
 
         # add the loss_mask (计算当前turn中那些数据需要mask loss 即无用)
         item_loss_mask = []
@@ -1488,16 +1329,7 @@ class RayPPOTrainer:
         # adv
         format_penalty_tensor = batch.batch["format_penalty_tensor"]
         # f1 + penalty
-        # batch.batch["token_level_scores"] = f1_rewards_tensor + format_penalty_tensor
-        batch.batch["token_level_scores"] = f1_rewards_tensor + format_penalty_tensor + token_retrieval_cost_tensor
-        # batch.batch["token_level_scores"] = format_penalty_tensor + token_retrieval_cost_tensor
-
-        # 验证token_level_scores计算是否正确
-        # print('f1_rewards_tensor[0]', f1_rewards_tensor[0])
-        # print('format_penalty_tensor[0]', format_penalty_tensor[0])
-        # print('token_retrieval_cost_tensor[0]', token_retrieval_cost_tensor[0])
-        # print('batch.batch["token_level_scores"][0]', batch.batch["token_level_scores"][0])
-        # print('\n')
+        batch.batch["token_level_scores"] = f1_rewards_tensor + format_penalty_tensor
 
         # compute rewards. apply_kl_penalty if available
         if self.config.algorithm.use_kl_in_reward:
@@ -1769,7 +1601,7 @@ class RayPPOTrainer:
         # perform validation before training
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
-            val_metrics = self._validate_agentic()
+            val_metrics = self._validate()
             assert val_metrics, f"{val_metrics=}"
             pprint(f"Initial validation metrics: {val_metrics}")
             logger.log(data=val_metrics, step=self.global_steps)
@@ -1791,8 +1623,29 @@ class RayPPOTrainer:
             # for batch_dict in self.train_dataloader:
             for batch_id, batch_dict in enumerate(self.train_dataloader):
 
-                if batch_id >= 0:
-                    break
+                def init_context_1turn_list(batch_dict, MAX_TURN):
+                    batch_size = batch_dict['input_ids'].size()[0]
+                    extra_info = batch_dict['extra_info']
+                    questions = [item['question'] for item in extra_info]
+                    context_1turn_list = []
+                    for temp_i in range(batch_size):
+                        temp_context = {
+                            "original_query": questions[temp_i],
+                            "query": questions[temp_i],
+                            "mode": 'normal',
+                            "is_sub": False,
+                            "results": [[]],
+                            "sub_query": [],
+                            "sub_answer": [],
+                            "begin_step": -1,
+                            "end_step": MAX_TURN,
+                            "current_step": -1,
+                            "token_cost": {},
+                            "answer": ""
+                        }
+                        context_1turn_list.append(temp_context)
+
+                    return context_1turn_list
 
                 print('************************* rollout *************************')
                 extra_info = batch_dict['extra_info']
@@ -1806,15 +1659,12 @@ class RayPPOTrainer:
                 predicted_answers_list = [""] * len(questions)  # 存储有效predicted answers
                 MAX_TURN = 5
                 context_list = init_context_1turn_list(batch_dict, MAX_TURN)  # batch size长度的list
-                token_cost_list = []  # [{}] * MAX_TURN
-
-                # print('begin context_list', context_list)
                 
                 for turn_id in range(MAX_TURN):
                     print('*********************************** new turn {} ***********************************'.format(turn_id))
                     metrics = {}
                     # rollout
-                    batch, metrics, _ = self.rollout(batch_dict, metrics, context_list, qa_manager, MAX_TURN)
+                    batch, metrics = self.rollout(batch_dict, metrics, context_list, qa_manager, MAX_TURN)
                     # get prediected answers == workflow -> List[str]
                     workflows_1turn, initial_workflows_context = self.get_answers_subs_list(batch)  # 每个workflow为list 比如['QR', 'RA', 'G']
                     # is the workflow legal or not
@@ -1898,7 +1748,19 @@ class RayPPOTrainer:
 
                     # ************************** run the workflows parallel **************************
                     with Manager() as manager:
-                        # 将每个 context 转换为 Manager().dict()，并处理其嵌套列表
+                        # 将每个 context 转换为 Manager().dict()，并处理其嵌套列表                 
+                        def convert_to_shared_structure(data, manager):
+                            if isinstance(data, list):
+                                return manager.list([
+                                    convert_to_shared_structure(item, manager) for item in data
+                                ])
+                            elif isinstance(data, dict):
+                                return manager.dict({
+                                    key: convert_to_shared_structure(value, manager)
+                                    for key, value in data.items()
+                                })
+                            else:
+                                return data
 
                         turn_context_list = manager.list([
                             convert_to_shared_structure(context, manager)
@@ -1924,6 +1786,25 @@ class RayPPOTrainer:
 
                         for p in processes:
                             p.join()
+
+                        def convert_to_local_structure(data):
+                            # 检查是否为 ListProxy 代理对象
+                            if isinstance(data, multiprocessing.managers.ListProxy):
+                                # 将 ListProxy 转换为普通列表
+                                return [convert_to_local_structure(item) for item in data]
+                            # 检查是否为 DictProxy 代理对象
+                            elif isinstance(data, multiprocessing.managers.DictProxy):
+                                # 将 DictProxy 转换为普通字典
+                                return {key: convert_to_local_structure(value) for key, value in data.items()}
+                            # 普通列表或元组
+                            elif isinstance(data, list) or isinstance(data, tuple):
+                                return [convert_to_local_structure(item) for item in data]
+                            # 普通字典
+                            elif isinstance(data, dict):
+                                return {key: convert_to_local_structure(value) for key, value in data.items()}
+                            else:
+                                # 对于基本数据类型，直接返回
+                                return data
 
                         # # local_turn_context_list = list(turn_context_list)
                         # # 在进程结束后，将共享的 Manager().dict() 转换为普通的 dict
@@ -1964,17 +1845,13 @@ class RayPPOTrainer:
                     batch_list.append(batch)
                     metrics_list.append(metrics)
 
-                    # 保存batch内所有数据在当前turn的token cost，并将context['token_cost'][key]置为零0.0
-                    token_cost_turn = []
-                    for context in context_list:
-                        token_cost_turn.append(deepcopy(context['token_cost']))
-                        for key in context['token_cost'].keys():
-                            context['token_cost'][key] = 0.0  # 置为零，为后续准备。
-                    # token_cost_list[turn_id] = token_cost_turn
-                    token_cost_list.append(token_cost_turn)
+                    # 如果所有的都有答案了(所有问题对应的都不是初始化的空答案""了)，那么提前break
+                    if "" not in predicted_answers_list:
+                        # print('>>>>>>>>>>>>>>>>>>>>>>>> got all answers on turn {} >>>>>>>>>>>>>>>>>>>>>>>>'.format(turn_id))
+                        break
 
                     # 保存workflow等信息
-                    with open('/root/paddlejob/workspace/env_run/verl/training_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
+                    with open('/root/paddlejob/workspace/env_run/verl/training_log.txt', 'a', encoding='utf-8') as file:
                         file.write(">>>>>>>>>>>>>> batch id: {} <<<<<<<<<<<<<<<<\n".format(batch_id))
                         file.write(">>>>>>>>>>>>>> turn id: {} <<<<<<<<<<<<<<<<\n".format(turn_id))
                         for temp_q_i in range(len(questions)):
@@ -1985,27 +1862,15 @@ class RayPPOTrainer:
                             file.write('question id: {}, is_legal: {}, workflow: {}, initial workflow: {}\n'.format(q_id, is_legal, workflow, initial_workflow))
                         file.write('\n')
 
-                    # 如果所有的都有答案了(所有问题对应的都不是初始化的空答案""了)，那么提前break
-                    if "" not in predicted_answers_list:
-                        # print('>>>>>>>>>>>>>>>>>>>>>>>> got all answers on turn {} >>>>>>>>>>>>>>>>>>>>>>>>'.format(turn_id))
-                        break
-
                 # 如果最后一轮结束后，且answer还为空，那么执行一次AnswerSummarizationAgent
                 for temp_i in range(len(questions)):
                     if predicted_answers_list[temp_i] == "":
                         agent = agent_pool.get("AnswerSummarizationAgent")
                         agent.run(context_list[temp_i])
                         predicted_answers_list[temp_i] = context_list[temp_i]['answer']
-                
-                # print('\n')
-                # # print('after context_list', context_list)
-                # for temp_turn_i, token_cost_turn in enumerate(token_cost_list):
-                #     print('token_cost_turn {}:'.format(temp_turn_i), token_cost_turn)
-                #     print('\n')
-                # print('\n')
 
                 # 保存答案
-                with open('/root/paddlejob/workspace/env_run/verl/training_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
+                with open('/root/paddlejob/workspace/env_run/verl/training_log.txt', 'a', encoding='utf-8') as file:
                     file.write(">>>>>>>>>>>>>> batch id: {} <<<<<<<<<<<<<<<<\n".format(batch_id))
                     for a_id in range(len(predicted_answers_list)):
                         predict_answer, golden_answer = predicted_answers_list[a_id], golden_answers[a_id]
@@ -2042,98 +1907,11 @@ class RayPPOTrainer:
                 #     print(key, value)
                 # print('\n')
 
-                # compute token cost and api cost, for each node, for wandb
-                is_QDS_list = [True if context["mode"] == "serial" else False for context in context_list]
-                is_QDP_list = [True if context["mode"] == "parallel" else False for context in context_list]
-                # 遍历每条数据，重新分配cost
-                for temp_i in range(len(questions)):
-                    if not is_QDS_list[temp_i] and not is_QDP_list[temp_i]:
-                        continue
-                    else:
-                        if is_QDS_list[temp_i]:
-                            qds_token_cost = 0.0
-                            # 遍历这条数据的 所有turn
-                            qds_turn_id = 0
-                            for turn_id in range(len(token_cost_list)):
-                                qds_token_cost = qds_token_cost + token_cost_list[turn_id][temp_i]["QueryDecompositionAgentSerial"] + token_cost_list[turn_id][temp_i]["QueryRewriteAgent"] + token_cost_list[turn_id][temp_i]["AnswerSummarizationAgent"]
-                                token_cost_list[turn_id][temp_i]["QueryRewriteAgent"] = 0.0
-                                token_cost_list[turn_id][temp_i]["AnswerSummarizationAgent"] = 0.0
-                                if token_cost_list[turn_id][temp_i]["QueryDecompositionAgentSerial"] > 0:
-                                    qds_turn_id = turn_id
-                            token_cost_list[qds_turn_id][temp_i]["QueryDecompositionAgentSerial"] = qds_token_cost
-                        elif is_QDP_list[temp_i]:
-                            qdp_token_cost = 0.0
-                            # 遍历这条数据的 所有turn
-                            qdp_turn_id = 0
-                            for turn_id in range(len(token_cost_list)):
-                                qdp_token_cost = qdp_token_cost + token_cost_list[turn_id][temp_i]["QueryDecompositionAgentSerial"] + token_cost_list[turn_id][temp_i]["AnswerSummarizationAgent"]
-                                token_cost_list[turn_id][temp_i]["AnswerSummarizationAgent"] = 0.0
-                                if token_cost_list[turn_id][temp_i]["QueryDecompositionAgentSerial"] > 0:
-                                    qdp_turn_id = turn_id
-                            token_cost_list[qdp_turn_id][temp_i]["QueryDecompositionAgentSerial"] = qdp_token_cost
-                # 计算每个node的cost，计算每个node的retrieval api调用情况（[turn_id][question_id]）
-                token_cost_final = [[0.0 for _ in range(len(questions))] for _ in range(len(token_cost_list))]
-                token_cost_scale_final = [[0.0 for _ in range(len(questions))] for _ in range(len(token_cost_list))]
-                retrieval_api_final = [[0.0 for _ in range(len(questions))] for _ in range(len(token_cost_list))]
-                turn_latency_cost_list = [[0.0 for _ in range(len(questions))] for _ in range(len(token_cost_list))]
-                # print('token_cost_final', token_cost_final)
-                # print('retrieval_api_final', retrieval_api_final)
-
-                for turn_id in range(len(token_cost_list)):
-                    for question_id in range(len(questions)):
-                        token_cost_dict = token_cost_list[turn_id][question_id]
-                        cur_token_cost = 0.0
-                        for key, value in token_cost_dict.items():
-                            if key == "RetrievalAgent":
-                                retrieval_api_final[turn_id][question_id] = 1 if value == 1 else retrieval_api_final[turn_id][question_id]
-                            else:
-                                token_cost_final[turn_id][question_id] += value
-                        token_cost_scale_final[turn_id][question_id] = token_cost_final[turn_id][question_id] * 2000
-
-                # compute all cost for each data
-                train_cost_dict = {"token_cost": [], "api_times": [], "avr_api_per_turn": [], "turn_num": []}
-                for temp_i in range(len(questions)):
-                    token_cost, api_cost = 0, 0
-                    for turn_id in range(len(token_cost_list)):
-                        token_cost += token_cost_final[turn_id][temp_i]
-                        api_cost += retrieval_api_final[turn_id][temp_i]
-                    train_cost_dict["token_cost"].append(token_cost)
-                    train_cost_dict["api_times"].append(api_cost)
-                    legal_step = context_list[temp_i]["end_step"] - context_list[temp_i]["begin_step"] + 1
-                    avr_api_per_turn = api_cost / legal_step
-                    train_cost_dict["avr_api_per_turn"].append(avr_api_per_turn)
-                for context in context_list:
-                    if context['mode'] == "serial":
-                        turn_latency_cost = len(context['sub_answer'])+1
-                    elif context['mode'] == "parallel":
-                        turn_latency_cost = 2
-                    else:
-                        turn_latency_cost = 1
-                    train_cost_dict["turn_num"].append(turn_latency_cost)
-
-
-                # print('\n')
-                # # print('after context_list', context_list)
-                # for temp_turn_i, token_cost_turn in enumerate(token_cost_list):
-                #     print('token_cost_turn {}:'.format(temp_turn_i), token_cost_turn)
-                #     print('\n')
-                # print('\n')
-
-                # # print最终的cost api看一下
-                # for turn_id in range(len(token_cost_list)):
-                #     print('token_cost_final[turn_id]:', token_cost_final[turn_id])
-                #     print('token_cost_scale_final[turn_id]:', token_cost_scale_final[turn_id])
-                #     print('retrieval_api_final[turn_id]:', retrieval_api_final[turn_id])
-                #     print('\n')
-
-
                 # assign rewards f1 to each data
                 for temp_i in range(len(batch_list)):
                     batch_list[temp_i], metrics_list[temp_i] = self.assign_rewards_compute_values_advs(
                         batch_list[temp_i], 
                         metrics_list[temp_i], 
-                        token_cost_scale_final[temp_i], 
-                        retrieval_api_final[temp_i], 
                         context_list, 
                         all_metrics_dict_list,
                         temp_i
@@ -2174,11 +1952,6 @@ class RayPPOTrainer:
                 for key, value in train_metrics_dict.items():
                     temp_training_metric_dict['training/training_score/{}'.format(key)] = np.mean(value)
                 metrics_aver.update(temp_training_metric_dict)
-                # wandb 记录training cost
-                temp_training_cost_dict = {}
-                for key, value in train_cost_dict.items():
-                    temp_training_cost_dict['training/training_cost/{}'.format(key)] = np.mean(value)
-                metrics_aver.update(temp_training_cost_dict)
 
                 # print('\n')
                 # for key, value in temp_training_metric_dict.items():
@@ -2400,12 +2173,11 @@ class RayPPOTrainer:
 
                 # validate
                 if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
-                    val_metrics: dict = self._validate_agentic()
+                    val_metrics: dict = self._validate()
                     if is_last_step:
                         last_val_metrics = val_metrics
                     metrics.update(val_metrics)
                     print('val_metrics', val_metrics)
-                    logger.log(data=val_metrics, step=self.global_steps)
 
                 if self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
                     self._save_checkpoint()

@@ -55,6 +55,8 @@ if __name__ == "__main__":
     questions = ["What is the capital of France?", "Who wrote '1984'?"]
     results = retriever_client.search(questions)
 
+    print('results', results)
+
     # 打印结果
     if results:
         for result in results:
@@ -64,4 +66,4 @@ if __name__ == "__main__":
                 print(f"Document {doc_id}: {doc}")
             print("\n")
 
-    print(results[0].keys())
+    # print(results[0].keys())

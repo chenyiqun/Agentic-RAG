@@ -181,7 +181,7 @@ class DataParallelPPOCritic(BasePPOCritic):
         self.critic_module.train()
         metrics = {}
 
-        select_keys = ["input_ids", "responses", "attention_mask", "position_ids", "values", "returns"]
+        select_keys = ["input_ids", "responses", "attention_mask", "position_ids", "values", "returns", "item_loss_mask"]
         batch = data.select(batch_keys=select_keys).batch
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
 
@@ -211,6 +211,12 @@ class DataParallelPPOCritic(BasePPOCritic):
                 self.critic_optimizer.zero_grad()
 
                 for data in micro_batches:
+                    item_loss_mask = data["item_loss_mask"]
+                    # # 如果所有值都为 False，跳过本次更新
+                    # if not torch.any(item_loss_mask):
+                    #     print('critic 所有值都为 False，跳过本次更新')
+                    #     continue
+
                     # Support all devices
                     if isinstance(data, DataProto):
                         data = {**data.batch.to(get_torch_device().current_device()), **data.non_tensor_batch}
@@ -228,19 +234,93 @@ class DataParallelPPOCritic(BasePPOCritic):
 
                     # assert not torch.any(torch.isnan(vpreds)).item()
 
+                    # item_loss_mask = data["item_loss_mask"]
+                    # # 如果所有值都为 False，跳过本次更新
+                    # if not torch.any(item_loss_mask):
+                    #     print('critic 所有值都为 False，跳过本次更新, item_loss_mask:', item_loss_mask)
+                    #     continue
+                    # print('critic 本次更新有效')
+
+                    # print('vpreds.size()', vpreds.size())
+                    # print('\n')
+                    # print('values.size()', values.size())
+                    # print('\n')
+                    # print('returns.size()', returns.size())
+                    # print('\n')
+                    # print('response_mask.size()', response_mask.size())
+                    # print('\n')
+                    # print('<><><><><><><><><><><><><><><><><><><><><><><> item_loss_mask:', item_loss_mask)
+                    # print('\n')
+
+                    # 将 item_loss_mask 扩展为适用于其他张量的形状
+                    item_loss_mask_index = item_loss_mask.squeeze()
+                    # print('><><><><><><><><><><><><><><><><><><><><><><>< item_loss_mask_index:', item_loss_mask_index)
+                    # print('\n')
+                    # 使用布尔索引进行筛选
+                    filtered_vpreds = vpreds[item_loss_mask_index]
+                    filtered_values = values[item_loss_mask_index]
+                    filtered_returns = returns[item_loss_mask_index]
+                    filtered_response_mask = response_mask[item_loss_mask_index]
+
+                    # print('filtered_vpreds.size()', filtered_vpreds.size())
+                    # print('\n')
+                    # print('filtered_values.size()', filtered_values.size())
+                    # print('\n')
+                    # print('filtered_returns.size()', filtered_returns.size())
+                    # print('\n')
+                    # print('filtered_response_mask.size()', filtered_response_mask.size())
+                    # print('\n')
+
+                    # if filtered_vpreds.size()[0] <= 1:
+                    #     print('55555555555 filtered_vpreds.size([0]) is {}'.format(filtered_vpreds.size()[0]))
+
+                    # print('vpreds', vpreds)
+                    # print('filtered_vpreds', filtered_vpreds)
+
                     vf_loss, vf_clipfrac = core_algos.compute_value_loss(
-                        vpreds=vpreds,
-                        values=values,
-                        returns=returns,
-                        response_mask=response_mask,
+                        vpreds=filtered_vpreds,
+                        values=filtered_values,
+                        returns=filtered_returns,
+                        response_mask=filtered_response_mask,
                         cliprange_value=self.config.cliprange_value,
                         loss_agg_mode=self.config.loss_agg_mode,
                     )
+
+                    # # 如果所有值都为 False，跳过本次更新
+                    # if not torch.any(item_loss_mask):
+                    #     print('critic 所有值都为 False，vf_loss乘以0')
+                    #     # continue
+                    #     print('vf_loss', vf_loss)
+                    #     print('vf_clipfrac', vf_clipfrac)
+                    #     print('\n')
+                    # else:
+                    #     # continue
+                    #     print('vf_loss', vf_loss)
+                    #     print('vf_clipfrac', vf_clipfrac)
+                    #     print('\n')
+
                     if self.config.use_dynamic_bsz:
                         # relative to the dynamic bsz
                         loss = vf_loss * (len(data) / self.config.ppo_mini_batch_size)
                     else:
-                        loss = vf_loss / self.gradient_accumulation
+                        num_true_int = item_loss_mask.sum().item()
+                        # print('num_true_int', num_true_int)
+                        loss = vf_loss / self.gradient_accumulation * num_true_int
+                        # print('critic loss', loss)
+                        # print('\n')
+                        # print('critic no use_dynamic_bsz, self.gradient_accumulation:', self.gradient_accumulation)
+                        # print('\n')
+
+                    # # 如果所有值都为 False，跳过本次更新，loss置为零。
+                    # if not torch.any(item_loss_mask):
+                    #     print('critic 所有值都为 False，loss乘以0')
+                    #     print('critic loss', loss)
+                    #     loss = loss * 0
+                    #     print('critic loss', loss)
+                    #     print('\n')
+                    # else:
+                    #     print('critic loss', loss)
+                    #     print('\n')
 
                     loss.backward()
 
@@ -252,8 +332,13 @@ class DataParallelPPOCritic(BasePPOCritic):
 
                     append_to_dict(metrics, data)
 
-                grad_norm = self._optimizer_step()
-                data = {"critic/grad_norm": grad_norm.detach().item()}
-                append_to_dict(metrics, data)
+                # Check if gradients have been computed
+                gradients_computed = any(param.grad is not None for param in self.critic_module.parameters())
+                if gradients_computed:
+                    grad_norm = self._optimizer_step()
+                    data = {"critic/grad_norm": grad_norm.detach().item()}
+                    append_to_dict(metrics, data)
+
         self.critic_optimizer.zero_grad()
+
         return metrics

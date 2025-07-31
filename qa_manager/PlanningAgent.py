@@ -32,14 +32,9 @@ class PlanningAgent:
 
     The followings are some examples:
 
-    For the easiest question, the Answer Generator (AG) can answer it directly without any query reformulation and external information:
-    Question: "Which city is the capital of Australia."
-    Workflow: AG
-    Then, we can use Answer Generator (AG) to get the answer directly.
-
     For simple questions that may require external knowledge to answer:
     Question: "Which team is the 2025 NBA champion?"
-    Workflow: R,AG
+    Workflow: QR,R,AG
     We can just retrieve the external information about the given question through Retrieval Agent (RA), then the Answer Generator (AG) can output the answer to the given question.
 
     For multi-hop questions like this:
@@ -51,6 +46,12 @@ class PlanningAgent:
     Question: "What is the most played song on Michael Jackson's third best-selling album?"
     Workflow: QDS
     This kind of problem requires breaking down the original problem into multiple subproblems that depend on each other. Convenient for subsequent processing. For such a question, only the QDS needs to be given, and no other tool/agent needs to be given.
+
+    For multi-hop questions like this:
+    Question: When was the director of Terminator 2 born?
+    Workflow: QDS
+    This kind of problem requires breaking down the original problem into multiple subproblems that depend on each other. Convenient for subsequent processing. For such a question, only the QDS needs to be given, and no other tool/agent needs to be given.
+
 
 
     Next I'll give you the Question that need to be answered, just output the appropriate Workflow in the format above, don't output anything else.

@@ -5,7 +5,7 @@ from typing import Dict, List, Any, Tuple, Optional
 from qa_manager.config import AGENT_CONFIG, EXAMPLE_PROMPT
 import requests
 import json
-from qa_manager.tools import TokenUsageTracker, setup_logger, setup_logger_no_print
+from qa_manager.tools import TokenUsageTracker, setup_logger, setup_logger_no_print, MODEL_PRICING
 import re
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -53,7 +53,23 @@ class ApiEnabledAgent(BaseAgent):
         self.timeout = config.get('timeout', 30)
         self.client = OpenAI(api_key=self.api_key, base_url=self.api_base)
 
-    def get_response(self, message: List[Dict]) -> str:
+    def record(self, usage: Dict) -> Dict:
+        model = usage.get('model', '')
+        completion_pricing = MODEL_PRICING[model]['completion']
+        prompt_pricing = MODEL_PRICING[model]['prompt']
+
+        return {
+            'model': model,
+            'agent_name': usage.get('agent_name', ''),
+            'completion_tokens': usage.get('completion_tokens', 0),
+            'prompt_tokens': usage.get('prompt_tokens', 0),
+            'total_tokens': usage.get('total_tokens', 0),
+            'completion_price': completion_pricing * usage.get('completion_tokens', 0) / 1000,
+            'prompt_price': prompt_pricing * usage.get('prompt_tokens', 0) / 1000,
+            'total_price': completion_pricing * usage.get('completion_tokens', 0) / 1000 + prompt_pricing * usage.get('prompt_tokens', 0) / 1000,
+        }
+
+    def get_response(self, message: List[Dict]) -> Tuple[str, Dict]:
         """
         通用的响应获取方法，调用OpenAI API。
         """
@@ -89,8 +105,9 @@ class ApiEnabledAgent(BaseAgent):
         tracker = TokenUsageTracker()
         tracker.record(usage)
 
+        usage = self.record(usage)
         # logger.info(f"\t\tRESPONSE - {response.choices[0].message.content}")
-        return response.choices[0].message.content
+        return response.choices[0].message.content, usage
 
     @abstractmethod
     def build_message(self, *args, **kwargs) -> List[Dict]:
@@ -111,8 +128,11 @@ class ApiEnabledAgent(BaseAgent):
         封装调用流程：构造 prompt -> 获取响应 -> 后处理
         """
         message = self.build_message(context)
-        raw_response = self.get_response(message)
+        raw_response, usage = self.get_response(message)
         self.post_process(context, raw_response)
+        if "token_cost" not in context:
+            context["token_cost"] = dict()
+        context["token_cost"][usage["agent_name"]] = usage["total_price"]
         super().log(context)
 
         return context
@@ -188,7 +208,7 @@ class QueryDecompositionAgentParallel(ApiEnabledAgent):
         ]
 
     def post_process(self, context: Dict[str, Any], response: str) -> None:
-        context["sub_query"] = [q.strip() for q in response.split('\n') if q.strip()][:4]
+        context["sub_query"] = [re.sub(r'^\s*\d+\.\s*', '', q.strip()) for q in response.split('\n') if q.strip()][:4]
         context["steps"] = len(context.get("sub_query"))
         context["mode"] = "parallel"
         context["results"] = [[] for _ in range(context["steps"])]
@@ -217,7 +237,7 @@ class QueryDecompositionAgentSerial(ApiEnabledAgent):
         ]
 
     def post_process(self, context: Dict[str, Any], response: str) -> None:
-        context["sub_query"] = [q.strip() for q in response.split('\n') if q.strip()][:4]
+        context["sub_query"] = [re.sub(r'^\s*\d+\.\s*', '', q.strip()) for q in response.split('\n') if q.strip()][:4]
         context["steps"] = len(context.get("sub_query"))
         context["mode"] = "serial"
         context["results"] = [[] for _ in range(context["steps"])]
@@ -435,6 +455,7 @@ class RetrievalAgent(BaseAgent):
             result = response.json()[0]["top_k_docs"]
 
             self.set_result(context, result)
+            context["token_cost"]["RetrievalAgent"] += 1
 
         except requests.exceptions.RequestException as e:
             logger.error(f"An error occurred: {e}")
@@ -711,7 +732,7 @@ if __name__ == "__main__":
 
     '''
 
-    batch_size=30
+    batch_size=4
     batch_runner = BatchAgentWorkflow(batch_size)
     final_answers = batch_runner.run_batch(questions)
 
