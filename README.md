@@ -1,6 +1,6 @@
-# MAO-ARAG: Multi-Agent Orchestration for Adaptive Retrieval-Augmented Generation
+# MAO-ARAG: Multi-Agent Orchestration for Agentic Retrieval-Augmented Generation
 
-**MAO-ARAG** is a multi-agent orchestration framework for adaptive Retrieval-Augmented Generation (RAG) in question-answering systems. It dynamically selects and integrates different RAG modules based on query complexity, balancing answer quality, cost, and latency.
+**MAO-ARAG** is a multi-agent orchestration framework for Agentic Retrieval-Augmented Generation (RAG) in question-answering systems. It dynamically selects and integrates different RAG modules based on query complexity, balancing answer quality, cost, and latency.
 
 ---
 
@@ -104,3 +104,4 @@ Run the run_ppo.sh to start the train loop of MAO-ARAG.
 ```bash
 bash run_ppo.sh
 ```
+
