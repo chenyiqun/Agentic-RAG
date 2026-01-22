@@ -84,38 +84,38 @@ if __name__ == "__main__":
     print('Testing on {}'.format(dataset_name))
 
     # 准备数据
-    project_path = '/root/paddlejob/workspace/env_run/agentic_rag'
+    project_path = '/root/workspace/env_run/agentic_rag'
     data_train, data_test = [], []
     if dataset_name == 'ambigqa':
-        with open('/root/paddlejob/workspace/env_run/rag_reranker/data/ambigqa/train_data.jsonl', 'r', encoding='utf-8') as file:
+        with open('/root/workspace/env_run/rag_reranker/data/ambigqa/train_data.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 data_train.append(json.loads(line.strip()))
-        with open('/root/paddlejob/workspace/env_run/rag_reranker/data/ambigqa/test_data.jsonl', 'r', encoding='utf-8') as file:
+        with open('/root/workspace/env_run/rag_reranker/data/ambigqa/test_data.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 data_test.append(json.loads(line.strip()))
         print('len(data_train): {}, len(data_test): {}'.format(len(data_train), len(data_test)))
 
     elif dataset_name == 'hotpotqa':
-        with open('/root/paddlejob/workspace/env_run/rag_reranker/data/hotpotqa/hotpotqa_train_questions_and_answers.json', 'r', encoding='utf-8') as file:
+        with open('/root/workspace/env_run/rag_reranker/data/hotpotqa/hotpotqa_train_questions_and_answers.json', 'r', encoding='utf-8') as file:
             data_train = json.load(file)
-        with open('/root/paddlejob/workspace/env_run/rag_reranker/data/hotpotqa/hotpotqa_test_questions_and_answers.json', 'r', encoding='utf-8') as file:
+        with open('/root/workspace/env_run/rag_reranker/data/hotpotqa/hotpotqa_test_questions_and_answers.json', 'r', encoding='utf-8') as file:
             data_test = json.load(file)
         print('len(data_train): {}, len(data_test): {}'.format(len(data_train), len(data_test)))
 
     elif dataset_name == '2wikimultihopqa':
-        with open('/root/paddlejob/workspace/env_run/rag_reranker/data/2wikimultihopqa/train.jsonl', 'r', encoding='utf-8') as file:
+        with open('/root/workspace/env_run/rag_reranker/data/2wikimultihopqa/train.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 data_train.append(json.loads(line.strip()))
-        with open('/root/paddlejob/workspace/env_run/rag_reranker/data/2wikimultihopqa/dev.jsonl', 'r', encoding='utf-8') as file:
+        with open('/root/workspace/env_run/rag_reranker/data/2wikimultihopqa/dev.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 data_test.append(json.loads(line.strip()))
         print('len(data_train): {}, len(data_test): {}'.format(len(data_train), len(data_test)))
     elif dataset_name == 'musique':
         data_train, data_test = [], []
-        with open('/root/paddlejob/workspace/env_run/rag/data/musique/musique_ans_v1.0_train.jsonl', 'r', encoding='utf-8') as file:
+        with open('/root/workspace/env_run/rag/data/musique/musique_ans_v1.0_train.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 data_train.append(json.loads(line.strip()))
-        with open('/root/paddlejob/workspace/env_run/rag/data/musique/musique_ans_v1.0_dev.jsonl', 'r', encoding='utf-8') as file:
+        with open('/root/workspace/env_run/rag/data/musique/musique_ans_v1.0_dev.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 data_test.append(json.loads(line.strip()))
         print('len(data_train): {}, len(data_test): {}'.format(len(data_train), len(data_test)))
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     # print('len(questions): {}'.format(len(questions)))
 
 
-    model_name = "/root/paddlejob/workspace/env_run/verl/models_fund/Qwen/Qwen2.5-7B-Instruct"
+    model_name = "/root/workspace/env_run/verl/models_fund/Qwen/Qwen2.5-7B-Instruct"
     # 获取可用的GPU设备
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = AutoModelForCausalLM.from_pretrained(
