@@ -653,7 +653,7 @@ logger = setup_logger_no_print(log_file='log/log_whole.log')
 
 if __name__ == "__main__":
 
-    model_name = "/root/paddlejob/workspace/env_run/verl/models_fund/Qwen/Qwen2.5-7B-Instruct"
+    model_name = "/root/workspace/env_run/verl/models_fund/Qwen/Qwen2.5-7B-Instruct"
     # 获取可用的GPU设备
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = AutoModelForCausalLM.from_pretrained(
