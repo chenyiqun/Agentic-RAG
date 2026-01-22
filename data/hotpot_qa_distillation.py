@@ -122,8 +122,8 @@ if __name__ == "__main__":
 
     data_source = "hotpotqa/distillation"
 
-    train_dir = "/root/paddlejob/workspace/env_run/verl/distillation_data.jsonl"
-    test_dir = "/root/paddlejob/workspace/env_run/verl/distillation_data.jsonl"
+    train_dir = "/root/workspace/env_run/verl/distillation_data.jsonl"
+    test_dir = "/root/workspace/env_run/verl/distillation_data.jsonl"
 
     def load_jsonl(file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
