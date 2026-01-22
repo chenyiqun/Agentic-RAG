@@ -37,17 +37,17 @@ def get_embeddings(sentences):
 
 if __name__ == '__main__':
 
-    pre_path = '/root/paddlejob/workspace/env_run/verl/retriever/'
+    pre_path = '/root/workspace/env_run/verl/retriever/'
 
     retrieval_model_name = 'e5'  # contriever e5 bge
     if retrieval_model_name == 'contriever':
-        retriever_model_path = '/root/paddlejob/workspace/env_run/rag_reranker/models_fund/facebook/contriever'
+        retriever_model_path = '/root/workspace/env_run/rag_reranker/models_fund/facebook/contriever'
         save_path = pre_path+'wikipedia.contriever'
     elif retrieval_model_name == 'bge':
-        retriever_model_path = '/root/paddlejob/workspace/env_run/rag_reranker/models_fund/BAAI/bge-base-en-v1.5'
+        retriever_model_path = '/root/workspace/env_run/rag_reranker/models_fund/BAAI/bge-base-en-v1.5'
         save_path = pre_path+'wikipedia.bge'
     elif retrieval_model_name == 'e5':
-        retriever_model_path = '/root/paddlejob/workspace/env_run/verl/retriever/intfloat/e5-base-v2'
+        retriever_model_path = '/root/workspace/env_run/verl/retriever/intfloat/e5-base-v2'
         save_path = pre_path+'wikipedia.e5'
 
     # loading data
