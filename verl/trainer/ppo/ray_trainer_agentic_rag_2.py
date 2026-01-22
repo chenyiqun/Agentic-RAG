@@ -1027,7 +1027,7 @@ class RayPPOTrainer:
                 token_cost_list.append(token_cost_turn)
 
                 # 保存workflow等信息
-                with open('/root/paddlejob/workspace/env_run/verl/testing_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
+                with open('/root/workspace/env_run/verl/testing_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
                     file.write(">>>>>>>>>>>>>> batch id: {} <<<<<<<<<<<<<<<<\n".format(batch_id))
                     file.write(">>>>>>>>>>>>>> turn id: {} <<<<<<<<<<<<<<<<\n".format(turn_id))
                     for temp_q_i in range(len(questions)):
@@ -1042,7 +1042,7 @@ class RayPPOTrainer:
                 # # 保存用于蒸馏的数据
                 # for temp_data_i, context in enumerate(context_list):
                 #     if turn_id <= context['end_step'] and turn_id >= context['begin_step']:
-                #         with open('/root/paddlejob/workspace/env_run/verl/distillation_data_nq.jsonl', 'a', encoding='utf-8') as file:
+                #         with open('/root/workspace/env_run/verl/distillation_data_nq.jsonl', 'a', encoding='utf-8') as file:
                 #             if context['query'] == cur_questions[temp_data_i]:
                 #                 is_sub = False
                 #             else:
@@ -1065,7 +1065,7 @@ class RayPPOTrainer:
                     predicted_answers_list[temp_i] = context_list[temp_i]['answer']
 
             # 保存答案
-            with open('/root/paddlejob/workspace/env_run/verl/testing_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
+            with open('/root/workspace/env_run/verl/testing_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
                 file.write(">>>>>>>>>>>>>> batch id: {} <<<<<<<<<<<<<<<<\n".format(batch_id))
                 for a_id in range(len(predicted_answers_list)):
                     predict_answer, golden_answer = predicted_answers_list[a_id], golden_answers[a_id]
@@ -1974,7 +1974,7 @@ class RayPPOTrainer:
                     token_cost_list.append(token_cost_turn)
 
                     # 保存workflow等信息
-                    with open('/root/paddlejob/workspace/env_run/verl/training_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
+                    with open('/root/workspace/env_run/verl/training_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
                         file.write(">>>>>>>>>>>>>> batch id: {} <<<<<<<<<<<<<<<<\n".format(batch_id))
                         file.write(">>>>>>>>>>>>>> turn id: {} <<<<<<<<<<<<<<<<\n".format(turn_id))
                         for temp_q_i in range(len(questions)):
@@ -2005,7 +2005,7 @@ class RayPPOTrainer:
                 # print('\n')
 
                 # 保存答案
-                with open('/root/paddlejob/workspace/env_run/verl/training_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
+                with open('/root/workspace/env_run/verl/training_log_{}.txt'.format(self.config.trainer.experiment_name), 'a', encoding='utf-8') as file:
                     file.write(">>>>>>>>>>>>>> batch id: {} <<<<<<<<<<<<<<<<\n".format(batch_id))
                     for a_id in range(len(predicted_answers_list)):
                         predict_answer, golden_answer = predicted_answers_list[a_id], golden_answers[a_id]
