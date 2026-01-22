@@ -1,15 +1,15 @@
 #!/bin/bash
 
-cd /root/paddlejob/workspace/env_run/gpu
+cd /root/workspace/env_run/gpu
 bash kill_gpu.sh
 bash stop.sh
-cd /root/paddlejob/workspace/env_run/verl
+cd /root/workspace/env_run/verl
 
-hotpot_qa_distill_train_path=/root/paddlejob/workspace/env_run/agentic_rag_baseline/data/hotpot_qa/train_distillation.parquet
-hotpot_qa_distill_test_path=/root/paddlejob/workspace/env_run/agentic_rag_baseline/data/hotpot_qa/test_distillation.parquet
+hotpot_qa_distill_train_path=/root/workspace/env_run/agentic_rag_baseline/data/hotpot_qa/train_distillation.parquet
+hotpot_qa_distill_test_path=/root/workspace/env_run/agentic_rag_baseline/data/hotpot_qa/test_distillation.parquet
 
-nq_distill_train_path=/root/paddlejob/workspace/env_run/agentic_rag_baseline/data/nq/train_distillation.parquet
-nq_distill_test_path=/root/paddlejob/workspace/env_run/agentic_rag_baseline/data/nq/test_distillation.parquet
+nq_distill_train_path=/root/workspace/env_run/agentic_rag_baseline/data/nq/train_distillation.parquet
+nq_distill_test_path=/root/workspace/env_run/agentic_rag_baseline/data/nq/test_distillation.parquet
 
 train_files="$nq_distill_train_path"
 test_files="$nq_distill_test_path"
@@ -30,16 +30,16 @@ torchrun --nproc_per_node=6 --nnodes=1 --node_rank=0 --master_addr="localhost" -
     data.is_sub_key=is_sub \
     data.prompt_dict_keys=['question'] \
     data.response_dict_keys=['answer'] \
-    model.partial_pretrain=/root/paddlejob/workspace/env_run/verl/models_fund/Qwen/Qwen2.5-0.5B-Instruct \
+    model.partial_pretrain=/root/workspace/env_run/verl/models_fund/Qwen/Qwen2.5-0.5B-Instruct \
     trainer.total_epochs=3 \
     trainer.logger=['console']
     trainer.project_name='verl_sft_nq' \
     trainer.experiment_name='qwen2.5_0.5b_distillation_nq' \
-    trainer.wandb_proxy=http://agent.baidu.com:8891 \
+    trainer.wandb_proxy=http://xxx \
     save_freq=1000000 \
     test_freq=1000000 \
     nnodes=1 \
     n_gpus_per_node=6 \
 
-cd /root/paddlejob/workspace/env_run/gpu
+cd /root/workspace/env_run/gpu
 bash gpu.sh
