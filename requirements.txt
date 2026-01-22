@@ -43,8 +43,8 @@ fastapi-cloud-cli==0.1.4
 fastchat==0.1.0
 fastrlock==0.8.3
 filelock==3.18.0
-flash_attn @ file:///root/paddlejob/workspace/env_run/verl/flash_attn-2.7.4.post1%2Bcu12torch2.6cxx11abiFALSE-cp310-cp310-linux_x86_64.whl#sha256=ffe17686fa1a0f288de9eae7c32af209d32a27b037ef28614f042b377af5b15a
-flashinfer-python @ file:///root/paddlejob/workspace/env_run/verl/flashinfer_python-0.2.2.post1%2Bcu124torch2.6-cp38-abi3-linux_x86_64.whl#sha256=7b5950853a0769809199f4f252eb271f63700e4f8a51e0da582f0f066b22cd7c
+flash_attn @ file:///root/workspace/env_run/verl/flash_attn-2.7.4.post1%2Bcu12torch2.6cxx11abiFALSE-cp310-cp310-linux_x86_64.whl#sha256=ffe17686fa1a0f288de9eae7c32af209d32a27b037ef28614f042b377af5b15a
+flashinfer-python @ file:///root/workspace/env_run/verl/flashinfer_python-0.2.2.post1%2Bcu124torch2.6-cp38-abi3-linux_x86_64.whl#sha256=7b5950853a0769809199f4f252eb271f63700e4f8a51e0da582f0f066b22cd7c
 Flask==3.1.1
 frozenlist==1.7.0
 fsspec==2024.6.1
