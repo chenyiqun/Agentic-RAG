@@ -1851,7 +1851,7 @@ class RayPPOTrainer:
                         break
 
                     # 保存workflow等信息
-                    with open('/root/paddlejob/workspace/env_run/verl/training_log.txt', 'a', encoding='utf-8') as file:
+                    with open('/root/workspace/env_run/verl/training_log.txt', 'a', encoding='utf-8') as file:
                         file.write(">>>>>>>>>>>>>> batch id: {} <<<<<<<<<<<<<<<<\n".format(batch_id))
                         file.write(">>>>>>>>>>>>>> turn id: {} <<<<<<<<<<<<<<<<\n".format(turn_id))
                         for temp_q_i in range(len(questions)):
@@ -1870,7 +1870,7 @@ class RayPPOTrainer:
                         predicted_answers_list[temp_i] = context_list[temp_i]['answer']
 
                 # 保存答案
-                with open('/root/paddlejob/workspace/env_run/verl/training_log.txt', 'a', encoding='utf-8') as file:
+                with open('/root/workspace/env_run/verl/training_log.txt', 'a', encoding='utf-8') as file:
                     file.write(">>>>>>>>>>>>>> batch id: {} <<<<<<<<<<<<<<<<\n".format(batch_id))
                     for a_id in range(len(predicted_answers_list)):
                         predict_answer, golden_answer = predicted_answers_list[a_id], golden_answers[a_id]
