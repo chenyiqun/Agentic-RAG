@@ -23,7 +23,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 torchrun --standalone --nnodes=1 --nproc_per_no
     data.prompt_dict_keys=['question'] \
     +data.response_dict_keys=['answer'] \
     data.micro_batch_size_per_gpu=4 \
-    model.partial_pretrain=/root/paddlejob/workspace/env_run/verl/models_fund/Qwen/Qwen2.5-0.5B-Instruct \
+    model.partial_pretrain=/root/workspace/env_run/verl/models_fund/Qwen/Qwen2.5-0.5B-Instruct \
     trainer.default_local_dir=$save_path \
     trainer.project_name=gsm8k-sft \
     trainer.experiment_name=gsm8k-sft-qwen-2.5-0.5b-instruct \
