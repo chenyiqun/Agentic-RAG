@@ -2,8 +2,8 @@ data:
   train_batch_size: 96
   micro_batch_size: null # will be deprecated, use micro_batch_size_per_gpu
   micro_batch_size_per_gpu: 8  # this is also val batch size
-  train_files: /root/paddlejob/workspace/env_run/agentic_rag_baseline/data/nq/train_distillation.parquet
-  val_files: /root/paddlejob/workspace/env_run/agentic_rag_baseline/data/nq/test_distillation.parquet
+  train_files: /root/workspace/env_run/agentic_rag_baseline/data/nq/train_distillation.parquet
+  val_files: /root/workspace/env_run/agentic_rag_baseline/data/nq/test_distillation.parquet
   # Single-turn settings
   prompt_key: question
   response_key: answer
@@ -23,7 +23,7 @@ data:
     name: null
   use_shm: False
 model:
-  partial_pretrain: /root/paddlejob/workspace/env_run/verl/models_fund/Qwen/Qwen2.5-1.5B-Instruct
+  partial_pretrain: /root/workspace/env_run/verl/models_fund/Qwen/Qwen2.5-1.5B-Instruct
   use_shm: False
   fsdp_config:
     model_dtype: fp32
