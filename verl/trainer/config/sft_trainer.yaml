@@ -57,7 +57,7 @@ trainer:
   total_epochs: 1
   total_training_steps: null
   logger: [ 'console' ]
-  wandb_proxy: http://agent.baidu.com:8891
+  wandb_proxy: http://xxx
   seed: 1
 
   save_freq: 1000000
